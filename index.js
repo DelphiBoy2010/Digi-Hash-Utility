@@ -126,30 +126,32 @@ const serverDecodeData = (data, senderAddress = '', path) => {
     if (HASH_WHITE_LIST.includes(senderAddress)) {
       return data;
     }
-    return decodeData(data);
+    const SECRET_KEY = getSecretKey();
+    return decodeData(data, SECRET_KEY);
   }
   return data;
 };
 
 /**
  * Encrypts data on the client side using AES encryption if enabled
- * @returns {string|any} - Encrypted hex string if enabled, or original data if disabled
- * @param config
+ * @param {Object} config - The request configuration object
+ * @param {boolean|string} enableHashData - Flag indicating if encryption is enabled
+ * @param {string} secretKey - The secret key used for encryption
+ * @returns {Object} - Modified config with encrypted data if enabled, or original config if disabled
  */
-const clientHashData = (config) => {
-  const ENABLE_HASH_DATA = getEnableHashData();
-  if (ENABLE_HASH_DATA === true || ENABLE_HASH_DATA === 'true') {
+const clientHashData = (config, enableHashData, secretKey) => {
+  if (enableHashData === true || enableHashData === 'true') {
     let newConfig = config;
     if (config.method === 'patch' || config.method === 'post') {
-      const hash = hashData(config.data);
+      const hash = hashData(config.data, secretKey);
       newConfig = {...config, data: {hash}};
     }
     if (config.method === 'delete') {
-      const hash = hashData(config.params);
+      const hash = hashData(config.params, secretKey);
       newConfig = { ...config, params: { hash } };
     }
     if (config.method === 'get') {
-      const hash = hashData(config.params);
+      const hash = hashData(config.params, secretKey);
       newConfig = { ...config, params: { hash } };
     }
     return newConfig;
@@ -161,24 +163,25 @@ const clientHashData = (config) => {
  * Decrypts data in client response objects if decryption is enabled
  * Handles various response formats and structures
  * @param {Object} response - The response object containing encrypted data
+ * @param {boolean|string} enableDecodeData - Flag indicating if decryption is enabled
+ * @param {string} secretKey - The secret key used for decryption
  * @returns {Object} - Response with decrypted data if enabled
  */
-const clientDecodeData = (response) => {
-  const ENABLE_DECODE_DATA = getEnableDecodeData();
-  if (ENABLE_DECODE_DATA === 'true') {
+const clientDecodeData = (response, enableDecodeData, secretKey) => {
+  if (enableDecodeData === 'true' || enableDecodeData === true) {
     if (response?.data?.total) {
-      response.data.data = decodeData(response?.data?.data);
+      response.data.data = decodeData(response?.data?.data, secretKey);
       return response;
     }
     if (response?.data) {
       if (typeof response?.data === 'object') {
         if (response?.data?.data) {
-          response.data.data = decodeData(response?.data?.data);
+          response.data.data = decodeData(response?.data?.data, secretKey);
           return response;
         }
         return response;
       }
-      response.data = decodeData(response?.data);
+      response.data = decodeData(response?.data, secretKey);
       return response;
     }
   }
@@ -188,13 +191,14 @@ const clientDecodeData = (response) => {
 /**
  * Helper function to decrypt data
  * @param {string} data - The encrypted hex string to decrypt
- * @returns {any} - The decrypted data
+ * @param {string} secretKey - The secret key used for decryption
+ * @returns {any} - The decrypted data, parsed as JSON if possible
+ * @throws {Error} - If decryption fails, logs error and returns original data
  */
-const decodeData = (data) => {
+const decodeData = (data, secretKey) => {
   try {
-    const SECRET_KEY = getSecretKey();
     let tmpData = Buffer.from(data, 'hex').toString();
-    tmpData = CryptoJS.AES.decrypt(tmpData, SECRET_KEY).toString(CryptoJS.enc.Utf8);
+    tmpData = CryptoJS.AES.decrypt(tmpData, secretKey).toString(CryptoJS.enc.Utf8);
     return tmpData === '' ? tmpData : JSON.parse(tmpData);
   } catch (error) {
     console.error('Error decoding data:', error);
@@ -205,13 +209,14 @@ const decodeData = (data) => {
 /**
  * Helper function to encrypt data
  * @param {any} data - The data to encrypt
+ * @param {string} secretKey - The secret key used for encryption
  * @returns {string} - The encrypted hex string
+ * @throws {Error} - If encryption fails, logs error and returns original data
  */
-const hashData = (data) => {
+const hashData = (data, secretKey) => {
   try {
-    const SECRET_KEY = getSecretKey();
     let hashData = JSON.stringify(data);
-    hashData = CryptoJS.AES.encrypt(hashData, SECRET_KEY).toString();
+    hashData = CryptoJS.AES.encrypt(hashData, secretKey).toString();
     hashData = Buffer.from(hashData).toString('hex');
     return hashData;
   } catch (error) {
